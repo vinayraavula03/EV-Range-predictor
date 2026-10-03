@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.db
+*.pyc
+.env
+node_modules/
+frontend/static/uploads/*
+!frontend/static/uploads/.gitkeep
+*.original
+instance/
+.vscode/
+

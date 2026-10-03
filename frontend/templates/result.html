@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Prediction Result - EV Range Prediction</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        /* Modern 3D Pedals UI */
+        .pedal-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            gap: 50px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            perspective: 800px;
+            height: 180px;
+        }
+
+        .pedal {
+            position: relative;
+            cursor: pointer;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: rotateX(25deg);
+            transform-origin: bottom center;
+            background: linear-gradient(180deg, #2a2d34 0%, #11141a 100%);
+            border-radius: 8px 8px 15px 15px;
+            box-shadow:
+                inset 0 10px 20px rgba(255, 255, 255, 0.15),
+                inset 0 -5px 15px rgba(0, 0, 0, 0.8),
+                0 25px 35px rgba(0, 0, 0, 0.6),
+                0 5px 15px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .pedal::before {
+            content: '';
+            position: absolute;
+            top: 5px;
+            bottom: 5px;
+            left: 8px;
+            right: 8px;
+            background: repeating-linear-gradient(0deg,
+                    transparent,
+                    transparent 8px,
+                    #1a1d24 8px,
+                    #1a1d24 12px);
+            border-radius: 4px;
+            z-index: 1;
+        }
+
+        .pedal-label {
+            position: absolute;
+            bottom: -35px;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #64748b;
+            transition: color 0.3s, text-shadow 0.3s;
+            text-align: center;
+            width: 100%;
+        }
+
+        .pedal.brake {
+            width: 110px;
+            height: 100px;
+            border: 2px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .pedal.brake:active {
+            transform: rotateX(45deg) scale(0.96);
+            box-shadow:
+                inset 0 5px 15px rgba(0, 0, 0, 0.9),
+                0 10px 15px rgba(0, 0, 0, 0.5),
+                0 0 25px rgba(239, 68, 68, 0.4);
+            border-color: rgba(239, 68, 68, 0.9);
+        }
+
+        .pedal.brake:active+.pedal-label {
+            color: #ef4444;
+            text-shadow: 0 0 12px rgba(239, 68, 68, 0.7);
+        }
+
+        .pedal.accel {
+            width: 70px;
+            height: 160px;
+            border: 2px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .pedal.accel:active {
+            transform: rotateX(45deg) scale(0.96);
+            box-shadow:
+                inset 0 5px 15px rgba(0, 0, 0, 0.9),
+                0 10px 15px rgba(0, 0, 0, 0.5),
+                0 0 25px rgba(34, 197, 94, 0.4);
+            border-color: rgba(34, 197, 94, 0.9);
+        }
+
+        .pedal.accel:active+.pedal-label {
+            color: #22c55e;
+            text-shadow: 0 0 12px rgba(34, 197, 94, 0.7);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h2>EV Range</h2>
+            </div>
+            <ul class="sidebar-menu">
+                <!-- Issue #4: Fixed hardcoded URLs with url_for -->
+                <li><a href="{{ url_for('ev.dashboard_page') }}">🏠 Dashboard</a></li>
+                <li><a href="{{ url_for('ev.profile_page') }}">👤 Profile</a></li>
+                <li><a href="{{ url_for('ev.settings_page') }}">⚙️ Settings</a></li>
+                <li><a href="{{ url_for('ev.map_page') }}">🗺️ Navigation</a></li>
+                <li><a href="{{ url_for('ev.home') }}">⚡ Prediction</a></li>
+                <li><a href="#" onclick="handleLogout()">🚪 Logout</a></li>
+            </ul>
+        </nav>
+
+        <div class="main-content">
+            <div class="top-bar">
+                <h1>Prediction Result</h1>
+                <div class="user-menu">
+                    <img id="result-user-photo" src="/static/images/default-profile.png" alt="Profile"
+                        class="user-avatar">
+                    <span id="result-username"></span>
+                    <button id="theme-toggle" class="control-btn"
+                        style="margin-left:15px;font-size:12px;padding:8px 12px;">🌙</button>
+                </div>
+            </div>
+
+            <div class="futuristic-dashboard glass-prediction-right"
+                style="max-width: 1400px; margin: 20px auto; display: flex; gap: 30px; padding: 30px; background: linear-gradient(135deg, rgba(10,14,23,0.95), rgba(26,31,46,0.95)); border-radius: 25px; backdrop-filter: blur(20px); border: 1px solid rgba(0,255,136,0.3); box-shadow: 0 25px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);">
+                <div class="prediction-left glass-prediction-card"
+                    style="flex: 1; min-width: 400px; background: rgba(15,25,40,0.7); border-radius: 25px; padding: 30px; border: 1px solid rgba(0,255,136,0.4); box-shadow: 0 20px 40px rgba(0,255,136,0.2); backdrop-filter: blur(25px); position: relative;">
+                    <!-- Toggle Icon -->
+                    <button id="sim-toggle" class="sim-toggle"
+                        style="position: absolute; top: 20px; right: 20px; width: 50px; height: 50px; border: none; border-radius: 50%; background: rgba(0,255,136,0.2); color: #00ff88; font-size: 20px; cursor: pointer; box-shadow: 0 0 20px rgba(0,255,136,0.5); transition: all 0.3s;">🔄</button>
+
+
+                    <!-- Issue #1: Ensure safe handling of prediction variable -->
+                    {% if prediction %}
+
+                    <h2 style="margin-bottom: 20px;">EV Range Prediction Result</h2>
+
+                    <!-- Live Battery Simulation Section -->
+                    <!-- Issue #3: Container now visible via JS when prediction is valid -->
+                    <div id="simulation-container" class="live-sim-card"
+                        style="display: block; margin-top: 30px; padding: 25px; background: rgba(20,30,50,0.6); border-radius: 20px; border: 1px solid rgba(0,255,136,0.5); box-shadow: 0 15px 35px rgba(0,255,136,0.3); backdrop-filter: blur(15px);">
+
+                        <h3 style="margin-bottom: 15px; color: #667eea; text-align: center;">🔋 Live Adaptive EV Range
+                            Simulation</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; text-align: center;">
+                            <div
+                                style="padding: 15px; background: rgba(10, 20, 15, 0.8); border: 1px solid #00ff88; border-radius: 8px; box-shadow: 0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1); transition: all 0.3s; cursor: default;" onmouseover="this.style.boxShadow='0 0 20px rgba(0,255,136,0.4), inset 0 0 15px rgba(0,255,136,0.2)'" onmouseout="this.style.boxShadow='0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1)'">
+                                <div style="font-size: 14px; color: #00ff88; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Current Speed</div>
+                                <div id="current-speed" style="font-size: 32px; font-weight: bold; color: #ffffff; text-shadow: 0 0 10px rgba(255,255,255,0.5);">{{
+                                    prediction.speed }}</div>
+                                <div style="font-size: 12px; color: #00ff88; opacity: 0.7;">km/h</div>
+                            </div>
+                            <div
+                                style="padding: 15px; background: rgba(10, 20, 15, 0.8); border: 1px solid #00ff88; border-radius: 8px; box-shadow: 0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1); transition: all 0.3s; cursor: default;" onmouseover="this.style.boxShadow='0 0 20px rgba(0,255,136,0.4), inset 0 0 15px rgba(0,255,136,0.2)'" onmouseout="this.style.boxShadow='0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1)'">
+                                <div style="font-size: 14px; color: #00ff88; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Live Battery %</div>
+                                <div id="live-battery" style="font-size: 32px; font-weight: bold; color: #ffffff; text-shadow: 0 0 10px #00ff88;">{{
+                                    prediction.battery }}</div>
+                                <div style="font-size: 12px; color: #00ff88; opacity: 0.7;">%</div>
+                            </div>
+                            <div
+                                style="padding: 15px; background: rgba(10, 20, 15, 0.8); border: 1px solid #00ff88; border-radius: 8px; box-shadow: 0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1); transition: all 0.3s; cursor: default;" onmouseover="this.style.boxShadow='0 0 20px rgba(0,255,136,0.4), inset 0 0 15px rgba(0,255,136,0.2)'" onmouseout="this.style.boxShadow='0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1)'">
+                                <div style="font-size: 14px; color: #00ff88; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Distance Travelled</div>
+                                <div id="distanceTravelled" style="font-size: 32px; font-weight: bold; color: #ffffff; text-shadow: 0 0 10px rgba(255,255,255,0.5);">
+                                    0.0</div>
+                                <div style="font-size: 12px; color: #00ff88; opacity: 0.7;">km</div>
+                            </div>
+                        </div>
+
+                        <!-- Efficiency Status Row -->
+                        <div
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; text-align: center;">
+                            <div
+                                style="padding: 12px; background: rgba(10, 20, 15, 0.8); border: 1px solid #00ff88; border-radius: 8px; box-shadow: 0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1); transition: all 0.3s; cursor: default;" onmouseover="this.style.boxShadow='0 0 20px rgba(0,255,136,0.4), inset 0 0 15px rgba(0,255,136,0.2)'" onmouseout="this.style.boxShadow='0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1)'">
+                                <div style="font-size: 14px; color: #00ff88; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Battery Status</div>
+
+
+                                <div id="efficiency-status" style="font-size: 20px; font-weight: bold; color: #ffffff; text-shadow: 0 0 8px #00ff88;">
+                                    Optimal</div>
+
+                            </div>
+                            <div
+                                style="padding: 12px; background: rgba(10, 20, 15, 0.8); border: 1px solid #00ff88; border-radius: 8px; box-shadow: 0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1); transition: all 0.3s; cursor: default;" onmouseover="this.style.boxShadow='0 0 20px rgba(0,255,136,0.4), inset 0 0 15px rgba(0,255,136,0.2)'" onmouseout="this.style.boxShadow='0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1)'">
+                                <div style="font-size: 14px; color: #00ff88; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Predicted Range</div>
+                                <div id="predictedRange" style="font-size: 20px; font-weight: bold; color: #ffffff; text-shadow: 0 0 8px #00ff88;">{{
+                                    prediction.predicted_range_km }}</div>
+                                <div style="font-size: 12px; color: #00ff88; opacity: 0.7;">km</div>
+                            </div>
+                        </div>
+
+                        <!-- Destination & Battery Sufficiency Row -->
+                        <div
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; text-align: center;">
+                            <div
+                                style="padding: 12px; background: rgba(10, 20, 15, 0.8); border: 1px solid #00ff88; border-radius: 8px; box-shadow: 0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1); transition: all 0.3s; cursor: default;" onmouseover="this.style.boxShadow='0 0 20px rgba(0,255,136,0.4), inset 0 0 15px rgba(0,255,136,0.2)'" onmouseout="this.style.boxShadow='0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1)'">
+                                <div style="font-size: 14px; color: #00ff88; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Route Distance</div>
+                                <div id="routeDistance" style="font-size: 20px; font-weight: bold; color: #ffffff;">--
+                                </div>
+                                <div style="font-size: 12px; color: #00ff88; opacity: 0.7;">km</div>
+                            </div>
+                            <div
+                                style="padding: 12px; background: rgba(10, 20, 15, 0.8); border: 1px solid #00ff88; border-radius: 8px; box-shadow: 0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1); transition: all 0.3s; cursor: default;" onmouseover="this.style.boxShadow='0 0 20px rgba(0,255,136,0.4), inset 0 0 15px rgba(0,255,136,0.2)'" onmouseout="this.style.boxShadow='0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1)'">
+
+                                <div style="font-size: 14px; color: #00ff88; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Efficiency Status</div>
+                                <div id="battery-sufficiency" style="font-size: 20px; font-weight: bold; color: #ffffff;">
+                                    --</div>
+                                <div id="differenceDistance" style="font-size: 14px; color: #00ff88; opacity: 0.7;">--</div>
+
+                        </div>
+
+                        <!-- Route Navigation & Nearest Power Station Slide Bar -->
+                        <div id="routeNavSlideBarCard"
+                            style="margin-top: 15px; padding: 14px 16px; background: rgba(10, 20, 15, 0.85); border: 1px solid #00ff88; border-radius: 8px; box-shadow: 0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1); transition: all 0.3s; text-align: left;"
+                            onmouseover="this.style.boxShadow='0 0 20px rgba(0,255,136,0.4), inset 0 0 15px rgba(0,255,136,0.2)'"
+                            onmouseout="this.style.boxShadow='0 0 10px rgba(0,255,136,0.2), inset 0 0 10px rgba(0,255,136,0.1)'">
+                            
+                            <!-- Header Grid: Route Navigation & Nearest Power Station -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start;">
+                                <!-- Left: Route Navigation -->
+                                <div style="border-right: 1px solid rgba(0, 255, 136, 0.2); padding-right: 10px;">
+                                    <div style="font-size: 13px; color: #00ff88; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 4px;">
+                                        🧭 Route Navigation
+                                    </div>
+                                    <div id="navDestinationDisplay" style="font-size: 16px; font-weight: bold; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ prediction.destination if prediction else '' }}">
+                                        {{ prediction.destination if prediction and prediction.destination else 'Active Route' }}
+                                    </div>
+                                    <div id="navEtaDisplay" style="font-size: 12px; color: #38bdf8; margin-top: 2px;">
+                                        ETA: Calculating...
+                                    </div>
+                                </div>
+
+                                <!-- Right: Nearest Power Station -->
+                                <div style="padding-left: 6px;">
+                                    <div style="font-size: 13px; color: #00ff88; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 4px;">
+                                        ⚡ Nearest Power Station
+                                    </div>
+                                    <div style="display: flex; align-items: baseline; gap: 6px;">
+                                        <div id="nearestStationDistance" style="font-size: 20px; font-weight: bold; color: #00e5ff; text-shadow: 0 0 8px #00e5ff;">
+                                            -- km
+                                        </div>
+                                        <span id="nearestStationBadge" style="font-size: 11px; color: #22c55e; font-weight: 600;">AWAY</span>
+                                    </div>
+                                    <div id="nearestStationName" style="font-size: 12px; color: #94a3b8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Nearest Charging Hub">
+                                        Locating nearest EV charger...
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Rectangular Slide Bar / Route Slider Track -->
+                            <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(0, 255, 136, 0.15);">
+                                <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-bottom: 6px;">
+                                    <span>📍 Traveled: <strong id="slidebarCurrentDistance" style="color: #00ff88;">0.0 km</strong></span>
+                                    <span>⚡ Power Hub: <strong id="slidebarStationDistance" style="color: #00e5ff;">-- km</strong></span>
+                                    <span>🏁 Total: <strong id="slidebarTotalDistance" style="color: #ffffff;">-- km</strong></span>
+                                </div>
+
+                                <!-- Track Container with Live Indicators -->
+                                <div style="position: relative; width: 100%; height: 10px; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(0, 255, 136, 0.35); border-radius: 6px; overflow: visible;">
+                                    <!-- Neon Fill -->
+                                    <div id="routeSlideBarFill" style="position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: linear-gradient(90deg, #00ff88, #00e5ff); border-radius: 5px; box-shadow: 0 0 8px #00ff88; transition: width 0.15s ease;"></div>
+
+                                    <!-- Nearest Power Station Pin -->
+                                    <div id="slidebarStationPin" style="position: absolute; top: -14px; left: 20%; transform: translateX(-50%); font-size: 14px; cursor: pointer; filter: drop-shadow(0 0 5px #00e5ff); transition: left 0.3s ease; z-index: 3;" title="Nearest Power Station - Click to navigate">
+                                        ⚡
+                                    </div>
+
+                                    <!-- Vehicle Marker / Thumb -->
+                                    <div id="slidebarCarPin" style="position: absolute; top: -14px; left: 0%; transform: translateX(-50%); font-size: 15px; filter: drop-shadow(0 0 6px #00ff88); transition: left 0.15s ease; z-index: 4;" title="Vehicle Position">
+                                        🚗
+                                    </div>
+
+                                    <!-- Destination Flag -->
+                                    <div style="position: absolute; top: -14px; right: 0; transform: translateX(50%); font-size: 14px; z-index: 3;" title="Destination">
+                                        🏁
+                                    </div>
+
+                                    <!-- Interactive Range Slider -->
+                                    <input type="range" id="routeNavSliderInput" min="0" max="100" value="0" step="0.1"
+                                        style="position: absolute; top: -6px; left: 0; width: 100%; height: 22px; opacity: 0; cursor: pointer; z-index: 6;"
+                                        title="Slide to preview route navigation">
+                                </div>
+
+                                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    <span>Origin</span>
+                                    <span style="color: #00e5ff;">⚡ Nearest Power Station</span>
+                                    <span>Destination</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Open in Google Maps Button - Only works if destination exists -->
+                        <div style="margin-top: 20px; text-align: center;">
+                            <button id="openGoogleMapsBtn" class="nav-btn">
+                                Open in Google Maps
+                            </button>
+                        </div>
+                    </div>
+
+
+                    {% else %}
+                    <!-- Fallback when prediction is not available -->
+                    <h2>No Prediction Data Available</h2>
+                    <p style="text-align: center; padding: 20px;">
+                        No prediction data found. Please <a href="{{ url_for('ev.predict_page') }}">make a
+                            prediction</a> first.
+                    </p>
+                    {% endif %}
+
+                    <!-- Store prediction data in a data attribute for safe JS access -->
+                    <div id="prediction-data" {% if prediction %} data-prediction='{{ prediction | tojson | safe }}' {%
+                        else %} data-prediction="" {% endif %} style="display: none;"></div>
+
+                    <!-- Dynamic car data for gauges -->
+                    <script>
+                        window.carData = {{ car_data | tojson | safe }};
+                    </script>
+
+                </div> <!-- end prediction-left -->
+
+                <div class="simulation-right"
+                    style="flex: 1; min-width: 400px; background: #0f172a; padding: 30px; border-radius: 20px; border: 2px solid #22c55e; box-shadow: 0 20px 40px rgba(34,197,94,0.3);">
+                    <h3
+                        style="text-align: center; color: #22c55e; margin-bottom: 30px; font-size: 24px; text-shadow: 0 0 15px #22c55e; font-weight: 700;">
+                        🚗 Professional EV Driving Cluster</h3>
+
+                    <div style="
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:60px;
+    margin-top:20px;
+">
+
+                        <!-- SPEEDOMETER -->
+                        <canvas id="speedCanvas" width="300" height="300"></canvas>
+
+                        <!-- RPM -->
+                        <canvas id="rpmCanvas" width="300" height="300"></canvas>
+
+                    </div>
+
+                    <div style="text-align: center; margin-top: 20px;">
+                        <button id="pauseSpeedBtn" style="padding: 10px 20px; background: rgba(10, 20, 15, 0.8); border: 2px solid #22c55e; color: #22c55e; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; transition: all 0.3s; box-shadow: 0 0 10px rgba(34,197,94,0.3);">
+                            ⏸️ Pause Speed
+                        </button>
+                    </div>
+
+                    <div class="pedal-container">
+                        <div
+                            style="position: relative; display: flex; flex-direction: column; align-items: center; margin-bottom: 20px;">
+                            <div class="pedal brake"></div>
+                            <div class="pedal-label">Brake</div>
+                        </div>
+                        <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+                            <div class="pedal accel"></div>
+                            <div class="pedal-label">Accelerator</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/route-calculator-fixed.js"></script>
+    <script src="/static/js/simulation.js?v=1005"></script>
+    <script src="/static/js/route-nav-slidebar.js"></script>
+    <!-- dashboard_gauges.css moved to head -->\n
+    <!-- Leaflet CSS & JS will stay here, gauges CSS moved to head -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Main result page logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            try {
+                checkAuthentication();
+                if (typeof updateResultUserInfo === 'function') {
+                    updateResultUserInfo();
+                }
+
+                const themeToggle = document.getElementById('theme-toggle');
+                if (themeToggle) {
+                    themeToggle.addEventListener('click', () => {
+                        document.body.classList.toggle('dark-mode');
+                        const isDark = document.body.classList.contains('dark-mode');
+                        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                        themeToggle.textContent = isDark ? '☀️' : '🌙';
+                    });
+                }
+
+                // Get prediction data safely
+                var predictionDataElement = document.getElementById('prediction-data');
+                var predictionData = null;
+
+                if (predictionDataElement && predictionDataElement.dataset.prediction) {
+                    try {
+                        predictionData = JSON.parse(predictionDataElement.dataset.prediction);
+                    } catch (e) {
+                        console.error("Prediction data parsing failed:", e);
+                    }
+                }
+
+                // Show simulation container if valid prediction
+                if (predictionData && predictionData.predicted_range_km !== undefined) {
+                    var simulationContainer = document.getElementById("simulation-container");
+                    if (simulationContainer) {
+                        simulationContainer.style.display = "block";
+                    }
+
+                    // Initialize simulation if available
+                    if (typeof initSimulation === 'function') {
+                        var simulationData = {
+                            battery: predictionData.battery || 100,
+                            estimated_range_km: predictionData.predicted_range_km || 0,
+                            speed: 0,
+                            ac: predictionData.ac || false,
+                            traffic: predictionData.traffic || 'medium',
+                            vehicle_load: predictionData.vehicle_load || predictionData.weight || 0,
+                            destination: predictionData.destination || ''
+                        };
+                        initSimulation(simulationData);
+                    }
+                }
+
+                // Google Maps button handler
+                var googleMapsBtn = document.getElementById("openGoogleMapsBtn");
+                if (googleMapsBtn) {
+                    googleMapsBtn.addEventListener("click", function () {
+                        var destination = predictionData && predictionData.destination ? predictionData.destination : '';
+                        if (destination && destination.trim() !== '') {
+                            var googleUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(destination);
+                            window.open(googleUrl, '_blank');
+                        } else {
+                            alert('No destination set. Please set a destination in your prediction.');
+                        }
+                    });
+                }
+
+            } catch (error) {
+                console.error('Result page initialization error:', error);
+            }
+        });
+    </script>
+</body>
+
+</html>
